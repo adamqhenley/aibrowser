@@ -77,6 +77,45 @@ AI Browser must be more trustworthy than the experience it improves.
 - **Publisher respect:** compliant representations carry publisher identity, links, licensing, and attribution. The browser does not use AIML to impersonate or obscure a publisher.
 - **Interoperability:** the format, schemas, renderer, and conformance tests are open source under a permissive license.
 
+## Shared benefit: amplify every participant
+
+The project should amplify the value each participant brings to the web. Users bring attention and intent; publishers bring information, services, and creative work; advertisers bring discoverable products and offers; browser and adapter developers make those connections easier to use. Improvements should help these contributions reach the right person in a useful, understandable form.
+
+This is a design objective, not a promise that interests never conflict. When tradeoffs arise, make them explicit, preserve the user's agency, respect publisher attribution and access rights, and test whether the proposed exchange creates value for all affected parties. Reduced advertising exposure must not be assumed to pay for itself through better engagement.
+
+### The exchange
+
+| Participant | Value amplified | Commitment owed to them |
+| --- | --- | --- |
+| User | Focus, understanding, accessibility, easier comparisons, and relevant discovery | Control over presentation and commercial content; clear sponsorship; privacy; inspectable sources |
+| Publisher | Clearer communication, accurate representation, attribution, useful interactions, and qualified visitors | Preserve meaning, source links, licensing, and access controls; investigate sustainable compensation |
+| Advertiser | Relevant opportunities to present products that fit a person's stated task | Disclosed placement rules, fair eligibility criteria, and meaningful measurement that respects privacy |
+| Browser and adapter ecosystem | Adoption, interoperability, trusted contributions, and sustainable development | Transparent incentives, accountable adapter behavior, and business arrangements that preserve user trust |
+
+### Commercial discovery as a useful service
+
+Advertising can be useful information when it is relevant, clearly labeled, and welcome in the user's task. A person comparing hiking tents could choose to see sponsored offers that meet their budget and requirements. A person reading an unrelated article should retain control over whether and how commercial material appears.
+
+The browser should distinguish three layers in both its data contracts and interface:
+
+- **Publisher content:** the source information, its provenance, and available services or actions.
+- **Sponsored offers:** identifiable paid placements, naming the sponsor and disclosing the commercial relationship, with product facts, eligibility constraints, and a destination.
+- **Browser analysis:** attributed explanations, comparisons, or recommendations whose factual conclusions and task constraints remain independent of payment.
+
+**Payment can buy a disclosed opportunity to be considered; it cannot buy a factual conclusion or override the user's constraints.** Sponsored candidates must meet the same stated requirements as other candidates, and sponsorship must remain visible after adaptation. The browser must not imply that a paid placement is an independent recommendation or erase sponsorship while preserving the promotional message.
+
+Users should be able to invoke commercial discovery explicitly, set presentation preferences, and inspect why an offer appeared. Relevance should begin with the current task and consented context; participation must not depend on undisclosed cross-site tracking or selling private browsing content. Advertiser measurement should use the minimum necessary data and clearly defined outcomes, without promising personal information or attribution the browser cannot legitimately provide.
+
+### Publisher sustainability and incentives
+
+Making a publisher's message easier to understand is valuable, but does not by itself replace revenue. Evaluate options such as attributed referrals, subscriptions, direct support, user-permitted sponsored sections, and transparent revenue sharing with participating publishers. These are hypotheses to test, not implemented funding mechanisms or guaranteed outcomes.
+
+Publisher-provided AIML and community adapters should describe content faithfully while leaving presentation choices with the user. Participation should improve accuracy and interoperability rather than grant a party hidden control over ranking, user preferences, or model conclusions. Commercial agreements that influence eligibility, placement, or compensation must be disclosed where they matter to a decision.
+
+### Evidence of shared benefit
+
+Evaluate more than exposure or clicks: user task completion and perceived control; publisher fidelity, qualified engagement, and sustainable compensation; advertiser relevance and useful conversions; and ecosystem trust and maintainability. Include complaints, unwanted interruptions, source misrepresentation, and privacy costs when assessing an experiment. A gain for one participant should not conceal a loss imposed on another.
+
 ## Identity and model access
 
 The browser should support multiple providers. Where available, **Sign in with ChatGPT** is a user-authorized option—not a mechanism for the browser to assume or scrape a person’s account usage. OpenAI’s documented flow requires OAuth/PKCE consent; identity sign-in does not by itself grant access to ChatGPT-plan inference. The browser must check the granted scope, keep credentials in protected local storage, and make the active provider and expected data sharing clear.
