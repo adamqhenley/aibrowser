@@ -3,3 +3,8 @@ build/
 out/
 dist/
 .DS_Store
+local/
+.env
+.env.*
+!.env.example
+*.log

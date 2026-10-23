@@ -2,6 +2,10 @@
   "name": "aibrowser",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "engines": {"node": ">=24"},
+  "repository": {"type":"git","url":"https://github.com/adamqhenley/aibrowser.git"},
+  "files": ["*.mjs","preload.cjs","renderer/","scripts/","docs/","README.md","CHARTER.md","LICENSE","NOTICE","PRIVACY.md","SECURITY.md","CONTRIBUTING.md"],
   "type": "module",
   "description": "A Chromium-based research browser prototype with user-controlled page transformations.",
   "main": "main.mjs",
@@ -10,7 +14,8 @@
     "dev": "electron .",
     "prestart": "node scripts/build-auth.mjs",
     "predev": "node scripts/build-auth.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "check:public": "node scripts/check-public.mjs"
   },
   "devDependencies": {
     "electron": "^39.2.7"

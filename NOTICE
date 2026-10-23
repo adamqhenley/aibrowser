@@ -1,0 +1,14 @@
+AI Browser
+Copyright (c) 2026 Adam Henley and AI Browser contributors
+
+Independently authored project code is MIT licensed. Dependencies retain their
+own licenses. Electron includes Chromium and other third-party components;
+preserve their licenses and notices when distributing binaries. No packaged
+binary distribution is provided or audited by this source repository.
+
+The optional OpenAI Sign in with ChatGPT DevKit is NOT included in the current
+public source tree, default build, or MIT license. An independently obtained
+local copy and any generated integration files retain their separate terms.
+Historical commits that contained vendor/siwc-local retain the original
+noncommercial license and notices; this MIT license does not relicense them.
+No OpenAI trademark, service access, affiliation, or endorsement is granted.

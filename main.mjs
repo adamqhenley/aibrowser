@@ -1,4 +1,4 @@
-import { app, BrowserView, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserView, BrowserWindow, ipcMain, shell, nativeImage } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +6,9 @@ import {validateAIML} from './aiml.mjs';
 import {chatgpt} from './chatgpt.mjs';
 import {PLAN_INSTRUCTIONS,validatePlan} from './render-plan.mjs';
 import {isFacebook,visibleFacebookPosts,mergePosts} from './facebook-adapter.mjs';
+import {fullImagePreview} from './feed-media.mjs';
+import {addressUrl,webUrl} from './navigation.mjs';
+const imageAttempts=new Set();
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const appOrigin = 'aibrowser://app';
@@ -17,8 +20,16 @@ let aimlVisible=false;
 let lastAIML='';
 let polling=false;
 let aiRequest;
-let feedEnabled=false,feedPaused=false,feedPosts=[],feedRevision=0;
-ipcMain.handle('feed:enable',(event,enabled)=>{trusted(event);if(!isFacebook(pageView.webContents.getURL()))throw Error('Open Facebook first.');feedEnabled=Boolean(enabled);feedPaused=false;feedPosts=[];lastAIML='';if(feedEnabled){aimlVisible=true;window.setBrowserView(pageView);}else{aimlVisible=false;window.setBrowserView(pageView);window.webContents.send('aiml:document',null);}layoutPage();return feedEnabled;});
+let feedEnabled=false,feedPaused=false,feedPosts=[],feedRevision=0,feedGeneration=0;
+ipcMain.handle('feed:enable',async(event,enabled)=>{
+  trusted(event);if(!isFacebook(pageView.webContents.getURL()))throw Error('Open Facebook first.');
+  feedGeneration++;feedEnabled=Boolean(enabled);feedPaused=false;feedPosts=[];lastAIML='';imageAttempts.clear();
+  if(feedEnabled){aimlVisible=true;window.setBrowserView(pageView);}else{
+    aiRequest?.abort();aimlVisible=false;window.setBrowserView(pageView);window.webContents.send('aiml:document',null);
+    await pageView.webContents.executeJavaScriptInIsolatedWorld(999,[{code:'delete window.__aiBrowserFeed'}]).catch(()=>{});
+  }
+  layoutPage();return feedEnabled;
+});
 ipcMain.handle('feed:pause',(event,paused)=>{trusted(event);feedPaused=Boolean(paused);return feedPaused;});
 ipcMain.handle('feed:source',async(event,id)=>{trusted(event);if(!feedEnabled||!/^fb-post-\d+$/.test(id))return false;return pageView.webContents.executeJavaScriptInIsolatedWorld(999,[{code:`(()=>{const node=window.__aiBrowserFeed?.nodes.get(${JSON.stringify(id)});if(!node?.isConnected)return false;node.scrollIntoView({block:'center',behavior:'smooth'});return true;})()`}]);});
 function trusted(event){if(event.sender!==window.webContents||event.senderFrame!==window.webContents.mainFrame)throw Error('Only the browser interface can perform this action.');}
@@ -47,17 +58,33 @@ ipcMain.handle('chatgpt:render',async(event,{prompt,model,currentPlan})=>{
 
 async function discoverAIML(){
   if(polling||!pageView||pageView.webContents.isDestroyed())return;
-  polling=true;const url=pageView.webContents.getURL();
+  polling=true;const url=pageView.webContents.getURL(),generation=feedGeneration;
   try{
     if(feedEnabled&&isFacebook(url)){
       if(feedPaused)return;
-      const posts=await pageView.webContents.executeJavaScriptInIsolatedWorld(999,[{code:`(${visibleFacebookPosts.toString()})({postMenuSelector:'[aria-label^="Actions for this post"]'})`}]);
+      const posts=await pageView.webContents.executeJavaScriptInIsolatedWorld(999,[{code:`(${visibleFacebookPosts.toString()})({postMenuSelector:'[aria-label^="Actions for this post"]',adLinkSelector:'a[aria-label^="Open ad link to "]'})`}]);
       if(url!==pageView.webContents.getURL())return;
+      // Retrieve the complete image through Chromium's cache-aware network stack
+      // when already-decoded pixels are unavailable. Never crop to the viewport.
+      let captures=0;
+      if(!feedPosts.length)imageAttempts.clear();
+      for(const post of Array.isArray(posts)?posts:[]){
+        for(const media of (post.media||[]).slice(0,3)){
+          if(media.kind!=='image'||media.preview||captures>=2||feedPosts.find(p=>p.id===post.id)?.media?.some(m=>m.key===media.key&&m.preview))continue;
+          const attemptKey=post.id+':'+media.key;if(imageAttempts.has(attemptKey))continue;
+          imageAttempts.add(attemptKey);if(imageAttempts.size>300)imageAttempts.delete(imageAttempts.values().next().value);
+          try{
+            captures++;const preview=await fullImagePreview(pageView.webContents.session,nativeImage,media.imageUrl);
+            if(preview){media.preview=preview;media.cropped=false;}
+          }catch{/* Text and source navigation remain available without a preview. */}
+        }
+      }
+      if(url!==pageView.webContents.getURL()||generation!==feedGeneration||!feedEnabled||feedPaused)return;
       const merged=mergePosts(feedPosts,Array.isArray(posts)?posts:[]);
       if(JSON.stringify(merged)===JSON.stringify(feedPosts))return;
       feedPosts=merged;if(!feedPosts.length)return;
       const raw=JSON.stringify({version:'aiml/0.1',source:{title:'Your focused feed',canonicalUrl:url,publisher:'AI Browser · extracted visible Facebook text',revision:String(++feedRevision)},blocks:feedPosts.map(post=>({id:post.id,type:'paragraph',text:post.text,sourceAnchor:'#'+post.id})),actions:[]});
-      const doc=validateAIML(JSON.parse(raw),url);lastAIML=raw;window.webContents.send('aiml:document',{...doc,adapter:'facebook-visible',sponsoredIds:feedPosts.filter(p=>p.sponsored).map(p=>p.id)});return;
+      const doc=validateAIML(JSON.parse(raw),url);lastAIML=raw;window.webContents.send('aiml:document',{...doc,adapter:'facebook-visible',feedEntries:feedPosts,sponsoredIds:feedPosts.filter(p=>p.sponsored).map(p=>p.id)});return;
     }
     const raw=await pageView.webContents.executeJavaScript(`(()=>{const el=document.querySelector('script[type="application/aiml+json"]');return el&&el.textContent.length<=262144?el.textContent:null;})()`);
     if(url!==pageView.webContents.getURL())return;
@@ -67,13 +94,6 @@ async function discoverAIML(){
   }catch(error){if(lastAIML){lastAIML='';window.webContents.send('aiml:document',null);}}
   finally{polling=false;}
 }
-
-const clampUrl = (value) => {
-  const candidate = String(value ?? '').trim();
-  if (!candidate) return 'https://example.org';
-  try { return new URL(candidate.includes('://') ? candidate : `https://${candidate}`).toString(); }
-  catch { return `https://www.google.com/search?q=${encodeURIComponent(candidate)}`; }
-};
 
 const pageScript = String.raw`
 (() => {
@@ -140,7 +160,7 @@ async function collectSnapshot() {
 }
 
 async function navigate(rawUrl) {
-  const url = clampUrl(rawUrl);
+  const url = addressUrl(rawUrl);
   currentUrl = url;
   await pageView.webContents.loadURL(url);
   return { url: pageView.webContents.getURL(), title: pageView.webContents.getTitle() };
@@ -160,14 +180,19 @@ function createWindow() {
     webPreferences: { preload: path.join(root, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   window.loadFile(path.join(root, 'renderer', 'index.html'));
+  window.webContents.on('will-navigate',event=>event.preventDefault());
+  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   pageView = new BrowserView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
   window.setBrowserView(pageView);
   layoutPage();
   window.on('resize', layoutPage);
   pageView.webContents.on('did-start-navigation',(_event,_url,isInPlace,isMainFrame)=>{if(isMainFrame&&!isInPlace){lastAIML='';feedEnabled=false;feedPosts=[];aimlVisible=false;window.setBrowserView(pageView);layoutPage();window.webContents.send('aiml:document',null);}});
-  pageView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  pageView.webContents.on('will-navigate',(event,url)=>{if(!webUrl(url))event.preventDefault();});
+  pageView.webContents.on('will-redirect',(event,url)=>{if(!webUrl(url))event.preventDefault();});
+  pageView.webContents.setWindowOpenHandler(({ url }) => { const target=webUrl(url);if(target)shell.openExternal(target).catch(()=>{});return { action: 'deny' }; });
   pageView.webContents.on('did-navigate', (_event, url) => { currentUrl = url; window.webContents.send('page:location', { url, title: pageView.webContents.getTitle() }); });
   pageView.webContents.on('did-navigate-in-page', (_event, url) => { currentUrl = url; window.webContents.send('page:location', { url, title: pageView.webContents.getTitle() }); });
+  pageView.webContents.on('page-title-updated', () => {window.webContents.send('page:location',{url:pageView.webContents.getURL(),title:pageView.webContents.getTitle()});});
   pageView.webContents.on('did-finish-load', async () => {
     try { await pageView.webContents.executeJavaScript(pageScript, true); }
     catch { /* Browser-internal and restrictive pages cannot be transformed. */ }
@@ -177,21 +202,23 @@ function createWindow() {
   const timer=setInterval(discoverAIML,750);window.on('closed',()=>{clearInterval(timer);aiRequest?.abort();chatgpt.cancelSignIn();});
 }
 
-ipcMain.handle('aiml:show',(_event,enabled)=>{aimlVisible=Boolean(enabled)&&Boolean(lastAIML);if(aimlVisible&&!feedEnabled)window.removeBrowserView(pageView);else{window.setBrowserView(pageView);layoutPage();}return aimlVisible;});
+ipcMain.handle('aiml:show',(event,enabled)=>{trusted(event);aimlVisible=Boolean(enabled)&&Boolean(lastAIML);if(aimlVisible&&!feedEnabled)window.removeBrowserView(pageView);else{window.setBrowserView(pageView);layoutPage();}return aimlVisible;});
 
-ipcMain.handle('page:navigate', (_event, url) => navigate(url));
-ipcMain.handle('page:go-back', () => pageView.webContents.canGoBack() && pageView.webContents.goBack());
-ipcMain.handle('page:go-forward', () => pageView.webContents.canGoForward() && pageView.webContents.goForward());
-ipcMain.handle('page:reload', () => pageView.webContents.reload());
-ipcMain.handle('page:snapshot', () => collectSnapshot());
-ipcMain.handle('page:transform', async (_event, prompt) => {
+ipcMain.handle('page:navigate', (event, url) => {trusted(event);return navigate(url);});
+ipcMain.handle('page:go-back', event => {trusted(event);return pageView.webContents.canGoBack() && pageView.webContents.goBack();});
+ipcMain.handle('page:go-forward', event => {trusted(event);return pageView.webContents.canGoForward() && pageView.webContents.goForward();});
+ipcMain.handle('page:reload', event => {trusted(event);pageView.webContents.reload();});
+ipcMain.handle('page:snapshot', event => {trusted(event);return collectSnapshot();});
+ipcMain.handle('page:transform', async (event, prompt) => {
+  trusted(event);
   const snapshot = await collectSnapshot();
   const plan = transformFor(prompt, snapshot);
   const applied = await pageView.webContents.executeJavaScript(`window.__aibrowser.apply(${JSON.stringify(plan)})`, true);
   return { plan, applied, snapshot: { title: snapshot.title, url: snapshot.url, headings: snapshot.headings } };
 });
-ipcMain.handle('page:restore', () => pageView.webContents.executeJavaScript('window.__aibrowser.clear()', true));
-ipcMain.handle('provider:configure', (_event, configuration) => {
+ipcMain.handle('page:restore', event => {trusted(event);return pageView.webContents.executeJavaScript('window.__aibrowser.clear()', true);});
+ipcMain.handle('provider:configure', (event, configuration) => {
+  trusted(event);
   // Deliberately memory-only: credentials never reach page JavaScript or disk in this prototype.
   provider = { kind: configuration?.kind, baseUrl: configuration?.baseUrl, hasKey: Boolean(configuration?.apiKey) };
   return { configured: Boolean(provider.kind && provider.hasKey), provider: { kind: provider.kind, baseUrl: provider.baseUrl } };
