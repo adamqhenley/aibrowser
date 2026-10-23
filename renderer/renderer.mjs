@@ -6,6 +6,11 @@ const result = $('#result');
 let sourceDoc=null;
 let layoutHistory=[];
 let historyIndex=-1;
+let feedActive=false,feedPaused=false;
+function filterFeed(){if(!sourceDoc?.adapter)return;const term=$('#feed-filter').value.trim().toLowerCase();const sponsored=new Set(sourceDoc.sponsoredIds||[]);let shown=0;for(const node of $('#aiml-blocks').children){node.hidden=Boolean((term&&!node.textContent.toLowerCase().includes(term))||($('#feed-hide-sponsored').checked&&sponsored.has(node.dataset.blockId)));if(!node.hidden)shown++;}$('#feed-status').textContent=`${shown} of ${sourceDoc.blocks.length} captured posts shown · ${feedPaused?'paused':'live'} · up to 30 retained in memory`;}
+$('#feed-filter').oninput=filterFeed;$('#feed-hide-sponsored').onchange=filterFeed;
+$('#feed-enable').onclick=async()=>{try{feedActive=await window.aibrowser.feedEnable(!feedActive);aimlOpen=feedActive;$('#aiml-view').dataset.feed=String(feedActive);$('#aiml-view').hidden=!feedActive;$('#feed-enable').textContent=feedActive?'Disable local feed view':'Enable local feed view';$('#feed-pause').hidden=!feedActive;$('#feed-status').textContent=feedActive?'Waiting for visible feed posts. Sign in and scroll on the left.':'Local adapter is off.';if(feedActive){$('#aiml-title').textContent='Your focused feed';$('#aiml-provenance').textContent='Browser-extracted text · not a publisher-provided AIML document';$('#aiml-blocks').replaceChildren();}}catch(error){$('#feed-status').textContent=error.message;}};
+$('#feed-pause').onclick=async()=>{feedPaused=await window.aibrowser.feedPause(!feedPaused);$('#feed-pause').textContent=feedPaused?'Resume updates':'Pause updates';filterFeed();};
 function currentPlan(){const view=$('#aiml-view');if(!sourceDoc)return null;const preset=view.dataset.mode;return {layout:view.dataset.aiLayout||(preset==='focus'?'cards':preset?'reader':'list'),theme:view.dataset.aiTheme||(preset==='calm'?'warm':'light'),density:view.dataset.aiDensity||(preset==='focus'?'compact':'spacious'),order:[...$('#aiml-blocks').children].map(n=>n.dataset.blockId),explanation:$('#result-copy').textContent||'Original publisher order.'};}
 function recordLayout(plan){layoutHistory=layoutHistory.slice(0,historyIndex+1);layoutHistory.push(structuredClone(plan));if(layoutHistory.length>20)layoutHistory.shift();historyIndex=layoutHistory.length-1;updateHistoryButtons();}
 function updateHistoryButtons(){$('#undo-layout').disabled=historyIndex<=0;$('#redo-layout').disabled=historyIndex>=layoutHistory.length-1;}
@@ -19,6 +24,7 @@ function setLocation(page) {
   address.value = page.url;
   title.textContent = page.title || 'Untitled page';
   pageUrl.textContent = new URL(page.url).hostname;
+  $('#feed-controls').hidden=!['facebook.com','www.facebook.com','m.facebook.com'].includes(new URL(page.url).hostname);
 }
 async function transform(prompt) {
   if(aimlOpen){
@@ -67,16 +73,18 @@ $('#save-provider').onclick = async (event) => {
 window.aibrowser.onLocation(setLocation);
 let aimlOpen=false;
 window.aibrowser.onAIML(doc=>{
+  const oldScroll=$('#aiml-view').scrollTop;
   const previous=sourceDoc&&currentPlan();sourceDoc=doc;
   delete $('#aiml-view').dataset.aiLayout;delete $('#aiml-view').dataset.aiTheme;delete $('#aiml-view').dataset.aiDensity;
   $('#aiml-toggle').hidden=!doc;
   $('#aiml-status').textContent=doc?`AIML detected · ${doc.blocks.length} blocks · Revision ${doc.source.revision}`:'No app-published AIML detected on this page.';
-  if(!doc){layoutHistory=[];historyIndex=-1;updateHistoryButtons();aimlOpen=false;$('#aiml-view').hidden=true;$('#aiml-toggle').textContent='Open AIML view';window.aibrowser.showAIML(false);return;}
+  if(!doc){feedActive=false;$('#aiml-view').dataset.feed='false';$('#feed-enable').textContent='Enable local feed view';$('#feed-pause').hidden=true;layoutHistory=[];historyIndex=-1;updateHistoryButtons();aimlOpen=false;$('#aiml-view').hidden=true;$('#aiml-toggle').textContent='Open AIML view';window.aibrowser.showAIML(false);return;}
   $('#aiml-title').textContent=doc.source.title;
   $('#aiml-provenance').textContent=`${doc.source.publisher} · ${new URL(doc.source.canonicalUrl).hostname} · Source revision ${doc.source.revision}`;
   const nodes=doc.blocks.map((block,index)=>{const section=document.createElement('section');section.dataset.blockId=block.id;section.dataset.sourceIndex=index;section.className='aiml-block '+block.type;const text=document.createElement(block.type==='heading'?'h2':'p');text.textContent=block.text;const a=document.createElement('button');a.textContent='View source ↗';a.onclick=async()=>{aimlOpen=false;await window.aibrowser.showAIML(false);$('#aiml-view').hidden=true;$('#aiml-toggle').textContent='Open AIML view';await window.aibrowser.navigate(new URL(block.sourceAnchor,doc.source.canonicalUrl).href);};section.append(text,a);return section;});$('#aiml-blocks').replaceChildren(...nodes);
   const compatible=previous&&previous.order.length===doc.blocks.length&&previous.order.every(id=>doc.blocks.some(b=>b.id===id));
   if(compatible){applyPlan(previous);}else{layoutHistory=[];historyIndex=-1;$('#layout-receipt').textContent='Publisher content, ready to arrange around your task.';recordLayout(currentPlan());}
+  if(doc.adapter){$('#aiml-toggle').hidden=true;$('#view-mode-label').textContent='LOCAL FEED ADAPTER · VISIBLE TEXT';$('#aiml-provenance').textContent='Extracted by your browser · original posts remain on the left';$('#layout-receipt').textContent='Scroll Facebook on the left. Use local search or pause updates to read without interruptions.';$('#aiml-view').dataset.feed='true';$('#aiml-view').hidden=false;aimlOpen=true;for(const node of $('#aiml-blocks').children){const button=node.querySelector('button');button.textContent='Locate original post';button.onclick=async()=>{if(!await window.aibrowser.feedSource(node.dataset.blockId))$('#feed-status').textContent='Facebook has unloaded this post. Return to the original feed to find it.';};}$('#aiml-view').scrollTop=oldScroll;filterFeed();}
 });
 $('#aiml-toggle').onclick=async()=>{aimlOpen=await window.aibrowser.showAIML(!aimlOpen);$('#aiml-view').hidden=!aimlOpen;$('#aiml-toggle').textContent=aimlOpen?'Show original website':'Open AIML view';};
 async function updateAccount(){

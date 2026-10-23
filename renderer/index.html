@@ -12,6 +12,7 @@
       <section><p id="aiml-status">Looking for app-published AIML…</p><button id="aiml-toggle" hidden>Open AIML view</button></section>
       <h1 id="page-title">A calmer web, on your terms.</h1>
       <p id="page-url">Loading…</p>
+      <section id="feed-controls" hidden><h2>Facebook reading companion</h2><p>Scroll Facebook on the left. Visible post text appears alongside it. Text stays on this device until you submit an AI request.</p><button id="feed-enable">Enable local feed view</button><button id="feed-pause" hidden>Pause updates</button><label><input id="feed-hide-sponsored" type="checkbox" /> Hide items labeled Sponsored in reading view</label><label for="feed-filter">Find in captured posts</label><input id="feed-filter" type="search" placeholder="A name, topic, or phrase" /><p id="feed-status" role="status">Local adapter is off.</p></section>
       <details id="chatgpt-account"><summary>ChatGPT connection & model</summary><p id="chatgpt-status" role="status">Checking connection…</p><button id="chatgpt-signin">Continue with ChatGPT</button><button id="chatgpt-cancel-signin" hidden>Cancel sign-in</button><button id="chatgpt-disconnect" hidden>Sign out</button><button id="chatgpt-usage">Manage usage</button><label for="chatgpt-model">Model</label><select id="chatgpt-model" disabled><option>Sign in to load models</option></select></details>
       <div class="quick-actions"><button data-mode="focus" aria-pressed="false" data-prompt="Make this page focused and remove distractions">Focus page</button><button data-mode="reader" aria-pressed="false" data-prompt="Turn this into a comfortable reader view">Reader view</button><button data-mode="calm" aria-pressed="false" data-prompt="Make this page calm and reduce motion">Calm mode</button></div>
       <form id="intent-form"><label for="intent">Tell the browser what you want from this page</label><textarea id="intent" placeholder="e.g. Put the records first in a compact dark layout"></textarea><p>Submitting sends this page’s AIML and your request to OpenAI using your ChatGPT plan.</p><button id="ai-submit" class="primary">Render with ChatGPT</button><button type="button" id="ai-cancel" hidden>Stop generation</button><p id="ai-status" role="status"></p></form>
@@ -23,6 +24,7 @@
     <link rel="stylesheet" href="./modes.css" />
     <link rel="stylesheet" href="./ai-layout.css" />
     <link rel="stylesheet" href="./refinements.css" />
+    <link rel="stylesheet" href="./feed.css" />
     <script type="module" src="./renderer.mjs"></script>
   </body>
 </html>

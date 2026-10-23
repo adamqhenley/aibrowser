@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {validateAIML} from './aiml.mjs';
 import {chatgpt} from './chatgpt.mjs';
 import {PLAN_INSTRUCTIONS,validatePlan} from './render-plan.mjs';
+import {isFacebook,visibleFacebookPosts,mergePosts} from './facebook-adapter.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const appOrigin = 'aibrowser://app';
@@ -16,6 +17,10 @@ let aimlVisible=false;
 let lastAIML='';
 let polling=false;
 let aiRequest;
+let feedEnabled=false,feedPaused=false,feedPosts=[],feedRevision=0;
+ipcMain.handle('feed:enable',(event,enabled)=>{trusted(event);if(!isFacebook(pageView.webContents.getURL()))throw Error('Open Facebook first.');feedEnabled=Boolean(enabled);feedPaused=false;feedPosts=[];lastAIML='';if(feedEnabled){aimlVisible=true;window.setBrowserView(pageView);}else{aimlVisible=false;window.setBrowserView(pageView);window.webContents.send('aiml:document',null);}layoutPage();return feedEnabled;});
+ipcMain.handle('feed:pause',(event,paused)=>{trusted(event);feedPaused=Boolean(paused);return feedPaused;});
+ipcMain.handle('feed:source',async(event,id)=>{trusted(event);if(!feedEnabled||!/^fb-post-\d+$/.test(id))return false;return pageView.webContents.executeJavaScriptInIsolatedWorld(999,[{code:`(()=>{const node=window.__aiBrowserFeed?.nodes.get(${JSON.stringify(id)});if(!node?.isConnected)return false;node.scrollIntoView({block:'center',behavior:'smooth'});return true;})()`}]);});
 function trusted(event){if(event.sender!==window.webContents||event.senderFrame!==window.webContents.mainFrame)throw Error('Only the browser interface can perform this action.');}
 ipcMain.handle('chatgpt:session',async event=>{trusted(event);return chatgpt.getSession();});
 ipcMain.handle('chatgpt:signin',async event=>{trusted(event);return chatgpt.signIn();});
@@ -26,6 +31,7 @@ ipcMain.handle('chatgpt:usage',async event=>{trusted(event);await shell.openExte
 ipcMain.handle('chatgpt:cancel',event=>{trusted(event);aiRequest?.abort();});
 ipcMain.handle('chatgpt:render',async(event,{prompt,model,currentPlan})=>{
   trusted(event);if(typeof prompt!=='string'||!prompt.trim()||prompt.length>4000)throw Error('Enter a request under 4000 characters.');
+  if(feedEnabled&&!feedPaused)throw Error('Pause feed updates before submitting an AI layout request.');
   if(aiRequest)throw Error('A layout request is already running.');
   const raw=lastAIML;const url=pageView.webContents.getURL();if(!raw)throw Error('This page has no valid AIML document.');
   const doc=validateAIML(JSON.parse(raw),url);if(! (await chatgpt.getSession()).sharing)throw Error('Continue with ChatGPT and enable plan usage first.');
@@ -43,6 +49,16 @@ async function discoverAIML(){
   if(polling||!pageView||pageView.webContents.isDestroyed())return;
   polling=true;const url=pageView.webContents.getURL();
   try{
+    if(feedEnabled&&isFacebook(url)){
+      if(feedPaused)return;
+      const posts=await pageView.webContents.executeJavaScriptInIsolatedWorld(999,[{code:`(${visibleFacebookPosts.toString()})()`}]);
+      if(url!==pageView.webContents.getURL())return;
+      const merged=mergePosts(feedPosts,Array.isArray(posts)?posts:[]);
+      if(JSON.stringify(merged)===JSON.stringify(feedPosts))return;
+      feedPosts=merged;if(!feedPosts.length)return;
+      const raw=JSON.stringify({version:'aiml/0.1',source:{title:'Your focused feed',canonicalUrl:url,publisher:'AI Browser · extracted visible Facebook text',revision:String(++feedRevision)},blocks:feedPosts.map(post=>({id:post.id,type:'paragraph',text:post.text,sourceAnchor:'#'+post.id})),actions:[]});
+      const doc=validateAIML(JSON.parse(raw),url);lastAIML=raw;window.webContents.send('aiml:document',{...doc,adapter:'facebook-visible',sponsoredIds:feedPosts.filter(p=>p.sponsored).map(p=>p.id)});return;
+    }
     const raw=await pageView.webContents.executeJavaScript(`(()=>{const el=document.querySelector('script[type="application/aiml+json"]');return el&&el.textContent.length<=262144?el.textContent:null;})()`);
     if(url!==pageView.webContents.getURL())return;
     if(!raw){if(lastAIML){lastAIML='';window.webContents.send('aiml:document',null);}return;}
@@ -134,7 +150,7 @@ function layoutPage() {
   if (!window || !pageView) return;
   const { width, height } = window.getContentBounds();
   const sidebarWidth = width <= 1050 ? 310 : 350;
-  pageView.setBounds({ x: 0, y: 94, width: Math.max(0, width - sidebarWidth), height: Math.max(0, height - 94) });
+  pageView.setBounds({ x: 0, y: 94, width: Math.max(0, feedEnabled?Math.floor((width-sidebarWidth)/2):width-sidebarWidth), height: Math.max(0, height - 94) });
 }
 
 function createWindow() {
@@ -148,7 +164,7 @@ function createWindow() {
   window.setBrowserView(pageView);
   layoutPage();
   window.on('resize', layoutPage);
-  pageView.webContents.on('did-start-navigation',(_event,_url,isInPlace,isMainFrame)=>{if(isMainFrame&&!isInPlace){lastAIML='';aimlVisible=false;window.setBrowserView(pageView);layoutPage();window.webContents.send('aiml:document',null);}});
+  pageView.webContents.on('did-start-navigation',(_event,_url,isInPlace,isMainFrame)=>{if(isMainFrame&&!isInPlace){lastAIML='';feedEnabled=false;feedPosts=[];aimlVisible=false;window.setBrowserView(pageView);layoutPage();window.webContents.send('aiml:document',null);}});
   pageView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   pageView.webContents.on('did-navigate', (_event, url) => { currentUrl = url; window.webContents.send('page:location', { url, title: pageView.webContents.getTitle() }); });
   pageView.webContents.on('did-navigate-in-page', (_event, url) => { currentUrl = url; window.webContents.send('page:location', { url, title: pageView.webContents.getTitle() }); });
@@ -161,7 +177,7 @@ function createWindow() {
   const timer=setInterval(discoverAIML,750);window.on('closed',()=>{clearInterval(timer);aiRequest?.abort();chatgpt.cancelSignIn();});
 }
 
-ipcMain.handle('aiml:show',(_event,enabled)=>{aimlVisible=Boolean(enabled)&&Boolean(lastAIML);if(aimlVisible)window.removeBrowserView(pageView);else{window.setBrowserView(pageView);layoutPage();}return aimlVisible;});
+ipcMain.handle('aiml:show',(_event,enabled)=>{aimlVisible=Boolean(enabled)&&Boolean(lastAIML);if(aimlVisible&&!feedEnabled)window.removeBrowserView(pageView);else{window.setBrowserView(pageView);layoutPage();}return aimlVisible;});
 
 ipcMain.handle('page:navigate', (_event, url) => navigate(url));
 ipcMain.handle('page:go-back', () => pageView.webContents.canGoBack() && pageView.webContents.goBack());
