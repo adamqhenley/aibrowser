@@ -1,0 +1,140 @@
+import { app, BrowserView, BrowserWindow, ipcMain, shell } from 'electron';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+const appOrigin = 'aibrowser://app';
+let window;
+let pageView;
+let provider = null;
+let currentUrl = 'https://example.org';
+
+const clampUrl = (value) => {
+  const candidate = String(value ?? '').trim();
+  if (!candidate) return 'https://example.org';
+  try { return new URL(candidate.includes('://') ? candidate : `https://${candidate}`).toString(); }
+  catch { return `https://www.google.com/search?q=${encodeURIComponent(candidate)}`; }
+};
+
+const pageScript = String.raw`
+(() => {
+  const id = 'aibrowser-transform-style';
+  const clear = () => {
+    document.getElementById(id)?.remove();
+    document.documentElement.removeAttribute('data-aibrowser-mode');
+    document.querySelectorAll('[data-aibrowser-hidden]').forEach((node) => {
+      node.hidden = false;
+      node.removeAttribute('data-aibrowser-hidden');
+    });
+  };
+  const readableNodes = () => [...document.body.querySelectorAll('main,article,[role="main"],h1,h2,h3,p,li,blockquote,pre,figcaption')]
+    .filter((node) => node.offsetParent && node.innerText?.trim().length > 35)
+    .slice(0, 260);
+  const outline = () => readableNodes().filter((node) => /^H[1-3]$/.test(node.tagName)).map((node) => node.innerText.trim().slice(0, 180));
+  const snapshot = () => ({
+    title: document.title,
+    url: location.href,
+    headings: outline(),
+    text: readableNodes().map((node) => node.innerText.trim()).join('\n').slice(0, 24000),
+    hasArticle: Boolean(document.querySelector('article,main,[role="main"]'))
+  });
+  const style = (css) => {
+    const node = document.createElement('style'); node.id = id; node.textContent = css; document.documentElement.append(node);
+  };
+  const hide = (selector) => document.querySelectorAll(selector).forEach((node) => { node.hidden = true; node.dataset.aibrowserHidden = 'true'; });
+  window.__aibrowser = {
+    snapshot,
+    clear,
+    apply(plan) {
+      clear();
+      const mode = plan?.mode || 'focus';
+      document.documentElement.dataset.aibrowserMode = mode;
+      const safeSelectors = Array.isArray(plan?.hideSelectors) ? plan.hideSelectors.slice(0, 16) : [];
+      safeSelectors.forEach((selector) => { try { hide(selector); } catch {} });
+      if (mode === 'focus' || mode === 'reader') {
+        hide('iframe,aside,nav,footer,[role="banner"],[role="complementary"],[aria-label*="advert" i],[id*="advert" i],[class*="advert" i],[class*="cookie" i],[id*="cookie" i]');
+        style('body{max-width:76rem!important;margin:0 auto!important;padding:3rem clamp(1.25rem,5vw,5rem)!important;background:#fbfaf7!important;color:#1f2937!important;font:20px/1.7 ui-serif,Georgia,serif!important}main,article,[role="main"]{max-width:46rem!important;margin:auto!important}p,li{max-width:46rem!important}img,video{max-width:100%!important;height:auto!important}header{position:static!important}');
+      }
+      if (mode === 'calm') style('*{animation:none!important;transition:none!important}body{filter:saturate(.82)!important}');
+      return { mode, headings: outline() };
+    }
+  };
+})()`;
+
+function transformFor(prompt, snapshot) {
+  const request = String(prompt ?? '').toLowerCase();
+  const mode = /reader|read|article|essay|long.?form/.test(request) ? 'reader' : /calm|quiet|distraction/.test(request) ? 'calm' : 'focus';
+  return {
+    id: randomUUID(), mode,
+    hideSelectors: ['[data-ad]', '.ad, .ads, .advertisement, .sponsored', '[data-testid*="ad"]'],
+    explanation: mode === 'reader'
+      ? 'Reader mode keeps the article hierarchy and removes peripheral interface elements.'
+      : mode === 'calm'
+        ? 'Calm mode reduces motion and visual intensity without removing source content.'
+        : `Focus mode prioritizes the primary information on ${snapshot?.title || 'this page'} and suppresses common clutter.`
+  };
+}
+
+async function collectSnapshot() {
+  await pageView.webContents.executeJavaScript(pageScript, true);
+  return pageView.webContents.executeJavaScript('window.__aibrowser.snapshot()', true);
+}
+
+async function navigate(rawUrl) {
+  const url = clampUrl(rawUrl);
+  currentUrl = url;
+  await pageView.webContents.loadURL(url);
+  return { url: pageView.webContents.getURL(), title: pageView.webContents.getTitle() };
+}
+
+function layoutPage() {
+  if (!window || !pageView) return;
+  const { width, height } = window.getContentBounds();
+  const sidebarWidth = width <= 1050 ? 310 : 350;
+  pageView.setBounds({ x: 0, y: 94, width: Math.max(0, width - sidebarWidth), height: Math.max(0, height - 94) });
+}
+
+function createWindow() {
+  window = new BrowserWindow({
+    width: 1400, height: 900, minWidth: 920, minHeight: 620,
+    titleBarStyle: 'hiddenInset', backgroundColor: '#101622',
+    webPreferences: { preload: path.join(root, 'preload.mjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  window.loadFile(path.join(root, 'renderer', 'index.html'));
+  pageView = new BrowserView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  window.setBrowserView(pageView);
+  layoutPage();
+  window.on('resize', layoutPage);
+  pageView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  pageView.webContents.on('did-navigate', (_event, url) => { currentUrl = url; window.webContents.send('page:location', { url, title: pageView.webContents.getTitle() }); });
+  pageView.webContents.on('did-navigate-in-page', (_event, url) => { currentUrl = url; window.webContents.send('page:location', { url, title: pageView.webContents.getTitle() }); });
+  pageView.webContents.on('did-finish-load', async () => {
+    try { await pageView.webContents.executeJavaScript(pageScript, true); }
+    catch { /* Browser-internal and restrictive pages cannot be transformed. */ }
+    window.webContents.send('page:location', { url: pageView.webContents.getURL(), title: pageView.webContents.getTitle() });
+  });
+  navigate(currentUrl).catch(() => undefined);
+}
+
+ipcMain.handle('page:navigate', (_event, url) => navigate(url));
+ipcMain.handle('page:go-back', () => pageView.webContents.canGoBack() && pageView.webContents.goBack());
+ipcMain.handle('page:go-forward', () => pageView.webContents.canGoForward() && pageView.webContents.goForward());
+ipcMain.handle('page:reload', () => pageView.webContents.reload());
+ipcMain.handle('page:snapshot', () => collectSnapshot());
+ipcMain.handle('page:transform', async (_event, prompt) => {
+  const snapshot = await collectSnapshot();
+  const plan = transformFor(prompt, snapshot);
+  const applied = await pageView.webContents.executeJavaScript(`window.__aibrowser.apply(${JSON.stringify(plan)})`, true);
+  return { plan, applied, snapshot: { title: snapshot.title, url: snapshot.url, headings: snapshot.headings } };
+});
+ipcMain.handle('page:restore', () => pageView.webContents.executeJavaScript('window.__aibrowser.clear()', true));
+ipcMain.handle('provider:configure', (_event, configuration) => {
+  // Deliberately memory-only: credentials never reach page JavaScript or disk in this prototype.
+  provider = { kind: configuration?.kind, baseUrl: configuration?.baseUrl, hasKey: Boolean(configuration?.apiKey) };
+  return { configured: Boolean(provider.kind && provider.hasKey), provider: { kind: provider.kind, baseUrl: provider.baseUrl } };
+});
+
+app.whenReady().then(createWindow);
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>AI Browser</title><link rel="stylesheet" href="./style.css" /></head>
+  <body>
+    <header>
+      <div class="brand"><span class="spark">✦</span><strong>AI Browser</strong><span class="tag">prototype</span></div>
+      <div class="navigation"><button id="back" aria-label="Back">←</button><button id="forward" aria-label="Forward">→</button><button id="reload" aria-label="Reload">↻</button><form id="address-form"><input id="address" aria-label="Address or search" autocomplete="off" value="https://example.org" /><button>Go</button></form></div>
+      <button id="settings" class="quiet">AI connection</button>
+    </header>
+    <aside id="assistant-panel">
+      <div class="eyebrow">PAGE INTELLIGENCE</div>
+      <h1 id="page-title">A calmer web, on your terms.</h1>
+      <p id="page-url">Loading…</p>
+      <div class="quick-actions"><button data-prompt="Make this page focused and remove distractions">Focus page</button><button data-prompt="Turn this into a comfortable reader view">Reader view</button><button data-prompt="Make this page calm and reduce motion">Calm mode</button></div>
+      <form id="intent-form"><label for="intent">Tell the browser what you want from this page</label><textarea id="intent" placeholder="e.g. Make the comparison easier to scan"></textarea><button class="primary">Transform this page</button></form>
+      <section id="result" hidden><div class="result-label">APPLIED LOCALLY</div><p id="result-copy"></p><button id="restore" class="quiet">Restore source page</button></section>
+      <section class="principles"><h2>Prototype contract</h2><p>Transformations run in your browser. The source URL remains visible, and one click restores the original DOM.</p><p>Provider credentials are memory-only and never exposed to websites.</p></section>
+    </aside>
+    <dialog id="settings-dialog"><form method="dialog"><button class="close" value="cancel" aria-label="Close">×</button><div class="eyebrow">AI PROVIDER</div><h2>Bring your own provider</h2><p>Connection plumbing is ready; this initial build intentionally uses local, deterministic transformations while we measure whether the experience earns model calls.</p><label>Provider<select id="provider-kind"><option>OpenAI-compatible</option><option>Anthropic-compatible</option><option>Local model</option></select></label><label>Base URL<input id="provider-url" placeholder="https://api.example.com/v1" /></label><label>API key<input id="provider-key" type="password" autocomplete="off" /></label><button id="save-provider" class="primary" value="default">Save for this session</button></form></dialog>
+    <script type="module" src="./renderer.mjs"></script>
+  </body>
+</html>

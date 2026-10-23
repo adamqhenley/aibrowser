@@ -1,0 +1,15 @@
+{
+  "name": "aibrowser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A Chromium-based research browser prototype with user-controlled page transformations.",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^39.2.7"
+  }
+}
