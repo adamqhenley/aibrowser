@@ -11,6 +11,15 @@ function setLocation(page) {
   pageUrl.textContent = new URL(page.url).hostname;
 }
 async function transform(prompt) {
+  if(aimlOpen){
+    const mode=/focus/i.test(prompt)?'focus':/reader|read|article|essay|long.?form/i.test(prompt)?'reader':/calm|quiet|distraction/i.test(prompt)?'calm':'focus';
+    $('#aiml-view').dataset.mode=mode;
+    $('#aiml-view').scrollTop=0;
+    document.querySelectorAll('[data-prompt]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.mode===mode)));
+    $('#view-mode-label').textContent=`AIML · ${mode.toUpperCase()} VIEW`;
+    $('#result-copy').textContent={focus:'Focus: compact record cards and a prominent count. All publisher content and source links are preserved.',reader:'Reader: a narrow reading column with larger serif text and generous spacing.',calm:'Calm: a warm, low-stimulation reading surface with spacious sections and no motion.'}[mode];
+    result.hidden=false;$('#intent').value='';return;
+  }
   const response = await window.aibrowser.transform(prompt);
   result.hidden = false;
   $('#result-copy').textContent = response.plan.explanation;
@@ -24,7 +33,7 @@ $('#forward').onclick = () => window.aibrowser.forward();
 $('#reload').onclick = () => window.aibrowser.reload();
 document.querySelectorAll('[data-prompt]').forEach((button) => button.onclick = () => transform(button.dataset.prompt));
 $('#intent-form').addEventListener('submit', (event) => { event.preventDefault(); transform($('#intent').value || 'Make this page focused and easier to use'); });
-$('#restore').onclick = async () => { await window.aibrowser.restore(); result.hidden = true; };
+$('#restore').onclick = async () => { if(aimlOpen){delete $('#aiml-view').dataset.mode;$('#view-mode-label').textContent='NATIVE AIML VIEW · PUBLISHER DATA';}else await window.aibrowser.restore();document.querySelectorAll('[data-prompt]').forEach(button=>button.setAttribute('aria-pressed','false'));result.hidden = true; };
 $('#settings').onclick = () => $('#settings-dialog').showModal();
 $('#save-provider').onclick = async (event) => {
   event.preventDefault();

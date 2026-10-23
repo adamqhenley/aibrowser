@@ -12,13 +12,14 @@
       <section><p id="aiml-status">Looking for app-published AIML…</p><button id="aiml-toggle" hidden>Open AIML view</button></section>
       <h1 id="page-title">A calmer web, on your terms.</h1>
       <p id="page-url">Loading…</p>
-      <div class="quick-actions"><button data-prompt="Make this page focused and remove distractions">Focus page</button><button data-prompt="Turn this into a comfortable reader view">Reader view</button><button data-prompt="Make this page calm and reduce motion">Calm mode</button></div>
+      <div class="quick-actions"><button data-mode="focus" aria-pressed="false" data-prompt="Make this page focused and remove distractions">Focus page</button><button data-mode="reader" aria-pressed="false" data-prompt="Turn this into a comfortable reader view">Reader view</button><button data-mode="calm" aria-pressed="false" data-prompt="Make this page calm and reduce motion">Calm mode</button></div>
       <form id="intent-form"><label for="intent">Tell the browser what you want from this page</label><textarea id="intent" placeholder="e.g. Make the comparison easier to scan"></textarea><button class="primary">Transform this page</button></form>
-      <section id="result" hidden><div class="result-label">APPLIED LOCALLY</div><p id="result-copy"></p><button id="restore" class="quiet">Restore source page</button></section>
+      <section id="result" hidden><div class="result-label">APPLIED LOCALLY</div><p id="result-copy"></p><button id="restore" class="quiet">Reset current view</button></section>
       <section class="principles"><h2>Prototype contract</h2><p>Transformations run in your browser. The source URL remains visible, and one click restores the original DOM.</p><p>Provider credentials are memory-only and never exposed to websites.</p></section>
     </aside>
     <dialog id="settings-dialog"><form method="dialog"><button class="close" value="cancel" aria-label="Close">×</button><div class="eyebrow">AI PROVIDER</div><h2>Bring your own provider</h2><p>Connection plumbing is ready; this initial build intentionally uses local, deterministic transformations while we measure whether the experience earns model calls.</p><label>Provider<select id="provider-kind"><option>OpenAI-compatible</option><option>Anthropic-compatible</option><option>Local model</option></select></label><label>Base URL<input id="provider-url" placeholder="https://api.example.com/v1" /></label><label>API key<input id="provider-key" type="password" autocomplete="off" /></label><button id="save-provider" class="primary" value="default">Save for this session</button></form></dialog>
-    <main id="aiml-view" hidden><div class="eyebrow">NATIVE AIML VIEW · PUBLISHER DATA · NO MODEL CALL</div><h1 id="aiml-title"></h1><p id="aiml-provenance"></p><div id="aiml-blocks"></div></main>
+    <main id="aiml-view" hidden><div id="view-mode-label" class="eyebrow">NATIVE AIML VIEW · PUBLISHER DATA</div><h1 id="aiml-title"></h1><p id="aiml-provenance"></p><div id="aiml-blocks"></div></main>
+    <link rel="stylesheet" href="./modes.css" />
     <script type="module" src="./renderer.mjs"></script>
   </body>
 </html>
