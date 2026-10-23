@@ -51,7 +51,7 @@ async function discoverAIML(){
   try{
     if(feedEnabled&&isFacebook(url)){
       if(feedPaused)return;
-      const posts=await pageView.webContents.executeJavaScriptInIsolatedWorld(999,[{code:`(${visibleFacebookPosts.toString()})()`}]);
+      const posts=await pageView.webContents.executeJavaScriptInIsolatedWorld(999,[{code:`(${visibleFacebookPosts.toString()})({postMenuSelector:'[aria-label^="Actions for this post"]'})`}]);
       if(url!==pageView.webContents.getURL())return;
       const merged=mergePosts(feedPosts,Array.isArray(posts)?posts:[]);
       if(JSON.stringify(merged)===JSON.stringify(feedPosts))return;
