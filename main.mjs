@@ -24,7 +24,7 @@ ipcMain.handle('chatgpt:disconnect',async event=>{trusted(event);aiRequest?.abor
 ipcMain.handle('chatgpt:models',async event=>{trusted(event);return chatgpt.listModels();});
 ipcMain.handle('chatgpt:usage',async event=>{trusted(event);await shell.openExternal('https://chatgpt.com/settings/usage');});
 ipcMain.handle('chatgpt:cancel',event=>{trusted(event);aiRequest?.abort();});
-ipcMain.handle('chatgpt:render',async(event,{prompt,model})=>{
+ipcMain.handle('chatgpt:render',async(event,{prompt,model,currentPlan})=>{
   trusted(event);if(typeof prompt!=='string'||!prompt.trim()||prompt.length>4000)throw Error('Enter a request under 4000 characters.');
   if(aiRequest)throw Error('A layout request is already running.');
   const raw=lastAIML;const url=pageView.webContents.getURL();if(!raw)throw Error('This page has no valid AIML document.');
@@ -32,7 +32,8 @@ ipcMain.handle('chatgpt:render',async(event,{prompt,model})=>{
   const models=await chatgpt.listModels();if(!models.some(m=>m.slug===model))throw Error('Choose a model available to your account.');
   const controller=new AbortController();aiRequest=controller;
   try{
-    const response=await chatgpt.streamResponse({model,instructions:PLAN_INSTRUCTIONS,input:JSON.stringify({request:prompt,document:doc}),signal:controller.signal});
+    const previous=currentPlan?validatePlan(currentPlan,doc):null;
+    const response=await chatgpt.streamResponse({model,instructions:PLAN_INSTRUCTIONS,input:JSON.stringify({request:prompt,currentPlan:previous,document:doc}),signal:controller.signal});
     if(raw!==lastAIML||url!==pageView.webContents.getURL())throw Error('The page changed while generating the layout. Please try again.');
     const plan=validatePlan(JSON.parse(response.text),doc);return {plan,model,revision:doc.source.revision};
   }finally{aiRequest=undefined;}
