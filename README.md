@@ -26,4 +26,12 @@ npm start
 
 ## Next experiment
 
+## Live React publisher demo
+
+The browser starts at https://aimlwebsite.pages.dev/. The page's React workspace publishes a bounded JSON document in `script[type="application/aiml+json"]`. The browser checks it every 750ms, validates its display fields and same-origin provenance, and offers **Open AIML view**. This native view renders plain text and source links without executing publisher capabilities or making model calls.
+
+Choose **Show original website**, toggle a record in **Live React → AIML**, then reopen AIML view to see the revision and count update from the same application state. Returning to the original website preserves the running React app. Full navigation reloads the illustrative session data.
+
+Run with `npm start`; run consumer checks with `node --test`. Website source lives only in its separate private repository. Current discovery supports embedded live documents; linked artifacts and model-generated layout plans are future work.
+
 Create a user-reviewed page representation: semantic blocks, preserved source anchors, optional AI-generated transform plan, and a visible diff/restore affordance. Only then should the browser submit minimized page context to a selected provider.

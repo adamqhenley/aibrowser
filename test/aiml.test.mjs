@@ -1,0 +1,5 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {validateAIML} from '../aiml.mjs';
+const doc=()=>({version:'aiml/0.1',source:{title:'Workspace',publisher:'Publisher',revision:'1',canonicalUrl:'https://aimlwebsite.pages.dev/'},blocks:[{id:'summary',type:'metric',text:'3 active records',sourceAnchor:'#summary'}],actions:[]});
+test('accepts same-origin publisher data and strips executable fields',()=>{const d=doc();d.blocks[0].onclick='evil()';const result=validateAIML(d,'https://aimlwebsite.pages.dev/');assert.equal(result.blocks[0].onclick,undefined);assert.equal(result.blocks[0].text,'3 active records');});
+test('rejects cross-origin provenance',()=>assert.throws(()=>validateAIML(doc(),'https://other.example/')));
+test('rejects duplicate IDs and unsupported block types',()=>{const d=doc();d.blocks.push(d.blocks[0]);assert.throws(()=>validateAIML(d,d.source.canonicalUrl));d.blocks=[{...d.blocks[0],type:'script'}];assert.throws(()=>validateAIML(d,d.source.canonicalUrl));});

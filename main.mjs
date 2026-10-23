@@ -2,13 +2,30 @@ import { app, BrowserView, BrowserWindow, ipcMain, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {validateAIML} from './aiml.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const appOrigin = 'aibrowser://app';
 let window;
 let pageView;
 let provider = null;
-let currentUrl = 'https://example.org';
+let currentUrl = 'https://aimlwebsite.pages.dev/';
+let aimlVisible=false;
+let lastAIML='';
+let polling=false;
+
+async function discoverAIML(){
+  if(polling||!pageView||pageView.webContents.isDestroyed())return;
+  polling=true;const url=pageView.webContents.getURL();
+  try{
+    const raw=await pageView.webContents.executeJavaScript(`(()=>{const el=document.querySelector('script[type="application/aiml+json"]');return el&&el.textContent.length<=262144?el.textContent:null;})()`);
+    if(url!==pageView.webContents.getURL())return;
+    if(!raw){if(lastAIML){lastAIML='';window.webContents.send('aiml:document',null);}return;}
+    if(raw===lastAIML)return;
+    const doc=validateAIML(JSON.parse(raw),url);lastAIML=raw;window.webContents.send('aiml:document',doc);
+  }catch(error){if(lastAIML){lastAIML='';window.webContents.send('aiml:document',null);}}
+  finally{polling=false;}
+}
 
 const clampUrl = (value) => {
   const candidate = String(value ?? '').trim();
@@ -99,13 +116,14 @@ function createWindow() {
   window = new BrowserWindow({
     width: 1400, height: 900, minWidth: 920, minHeight: 620,
     titleBarStyle: 'hiddenInset', backgroundColor: '#101622',
-    webPreferences: { preload: path.join(root, 'preload.mjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+    webPreferences: { preload: path.join(root, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   window.loadFile(path.join(root, 'renderer', 'index.html'));
   pageView = new BrowserView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
   window.setBrowserView(pageView);
   layoutPage();
   window.on('resize', layoutPage);
+  pageView.webContents.on('did-start-navigation',(_event,_url,isInPlace,isMainFrame)=>{if(isMainFrame&&!isInPlace){lastAIML='';aimlVisible=false;window.setBrowserView(pageView);layoutPage();window.webContents.send('aiml:document',null);}});
   pageView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   pageView.webContents.on('did-navigate', (_event, url) => { currentUrl = url; window.webContents.send('page:location', { url, title: pageView.webContents.getTitle() }); });
   pageView.webContents.on('did-navigate-in-page', (_event, url) => { currentUrl = url; window.webContents.send('page:location', { url, title: pageView.webContents.getTitle() }); });
@@ -115,7 +133,10 @@ function createWindow() {
     window.webContents.send('page:location', { url: pageView.webContents.getURL(), title: pageView.webContents.getTitle() });
   });
   navigate(currentUrl).catch(() => undefined);
+  const timer=setInterval(discoverAIML,750);window.on('closed',()=>clearInterval(timer));
 }
+
+ipcMain.handle('aiml:show',(_event,enabled)=>{aimlVisible=Boolean(enabled)&&Boolean(lastAIML);if(aimlVisible)window.removeBrowserView(pageView);else{window.setBrowserView(pageView);layoutPage();}return aimlVisible;});
 
 ipcMain.handle('page:navigate', (_event, url) => navigate(url));
 ipcMain.handle('page:go-back', () => pageView.webContents.canGoBack() && pageView.webContents.goBack());
