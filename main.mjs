@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {validateAIML} from './aiml.mjs';
+import {chatgpt} from './chatgpt.mjs';
+import {PLAN_INSTRUCTIONS,validatePlan} from './render-plan.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const appOrigin = 'aibrowser://app';
@@ -13,6 +15,28 @@ let currentUrl = 'https://aimlwebsite.pages.dev/';
 let aimlVisible=false;
 let lastAIML='';
 let polling=false;
+let aiRequest;
+function trusted(event){if(event.sender!==window.webContents||event.senderFrame!==window.webContents.mainFrame)throw Error('Only the browser interface can perform this action.');}
+ipcMain.handle('chatgpt:session',async event=>{trusted(event);return chatgpt.getSession();});
+ipcMain.handle('chatgpt:signin',async event=>{trusted(event);return chatgpt.signIn();});
+ipcMain.handle('chatgpt:cancel-signin',event=>{trusted(event);chatgpt.cancelSignIn();});
+ipcMain.handle('chatgpt:disconnect',async event=>{trusted(event);aiRequest?.abort();await chatgpt.disconnect();return chatgpt.getSession();});
+ipcMain.handle('chatgpt:models',async event=>{trusted(event);return chatgpt.listModels();});
+ipcMain.handle('chatgpt:usage',async event=>{trusted(event);await shell.openExternal('https://chatgpt.com/settings/usage');});
+ipcMain.handle('chatgpt:cancel',event=>{trusted(event);aiRequest?.abort();});
+ipcMain.handle('chatgpt:render',async(event,{prompt,model})=>{
+  trusted(event);if(typeof prompt!=='string'||!prompt.trim()||prompt.length>4000)throw Error('Enter a request under 4000 characters.');
+  if(aiRequest)throw Error('A layout request is already running.');
+  const raw=lastAIML;const url=pageView.webContents.getURL();if(!raw)throw Error('This page has no valid AIML document.');
+  const doc=validateAIML(JSON.parse(raw),url);if(! (await chatgpt.getSession()).sharing)throw Error('Continue with ChatGPT and enable plan usage first.');
+  const models=await chatgpt.listModels();if(!models.some(m=>m.slug===model))throw Error('Choose a model available to your account.');
+  const controller=new AbortController();aiRequest=controller;
+  try{
+    const response=await chatgpt.streamResponse({model,instructions:PLAN_INSTRUCTIONS,input:JSON.stringify({request:prompt,document:doc}),signal:controller.signal});
+    if(raw!==lastAIML||url!==pageView.webContents.getURL())throw Error('The page changed while generating the layout. Please try again.');
+    const plan=validatePlan(JSON.parse(response.text),doc);return {plan,model,revision:doc.source.revision};
+  }finally{aiRequest=undefined;}
+});
 
 async function discoverAIML(){
   if(polling||!pageView||pageView.webContents.isDestroyed())return;
@@ -133,7 +157,7 @@ function createWindow() {
     window.webContents.send('page:location', { url: pageView.webContents.getURL(), title: pageView.webContents.getTitle() });
   });
   navigate(currentUrl).catch(() => undefined);
-  const timer=setInterval(discoverAIML,750);window.on('closed',()=>clearInterval(timer));
+  const timer=setInterval(discoverAIML,750);window.on('closed',()=>{clearInterval(timer);aiRequest?.abort();chatgpt.cancelSignIn();});
 }
 
 ipcMain.handle('aiml:show',(_event,enabled)=>{aimlVisible=Boolean(enabled)&&Boolean(lastAIML);if(aimlVisible)window.removeBrowserView(pageView);else{window.setBrowserView(pageView);layoutPage();}return aimlVisible;});

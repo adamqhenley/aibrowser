@@ -1,0 +1,14 @@
+#chatgpt-account{border-block:1px solid #3a4a64;padding:18px 0;margin:18px 0}#chatgpt-account button{margin:4px 2px;font-size:12px}#chatgpt-account select{margin-top:6px}#ai-status{color:#99f6e4;overflow-wrap:anywhere}
+#aiml-view[data-ai-layout="cards"] #aiml-blocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
+#aiml-view[data-ai-layout="cards"] .aiml-block{margin:0;padding:20px;border:1px solid #a5b8a4;border-radius:14px;background:#ffffff44}
+#aiml-view[data-ai-layout="reader"] #aiml-blocks{max-width:650px;margin:auto}
+#aiml-view[data-ai-layout="reader"] .aiml-block p{font:25px/1.85 Georgia,serif}
+#aiml-view[data-ai-layout="list"] .aiml-block{padding:12px 0}
+#aiml-view[data-ai-density="compact"] .aiml-block{padding:12px;margin-block:8px}
+#aiml-view[data-ai-density="compact"] .aiml-block p{font-size:17px;line-height:1.5}
+#aiml-view[data-ai-density="spacious"] .aiml-block{padding:28px;margin-block:20px}
+#aiml-view[data-ai-theme="warm"]{background:#e8dfd0;color:#4c4439}
+#aiml-view[data-ai-theme="dark"]{background:#16232d;color:#eef6f2}
+#aiml-view[data-ai-theme="dark"] .aiml-block p,#aiml-view[data-ai-theme="dark"] #aiml-provenance{color:#d7e5de}
+#aiml-view[data-ai-theme="dark"] .aiml-block.metric{background:#274c45}
+#aiml-view[data-ai-theme="dark"] .aiml-block button{color:#c6f3dd;border-color:#7e9d91}
